@@ -1,0 +1,11 @@
+{
+  "name": "DailyLog",
+  "short_name": "DailyLog",
+  "description": "店舗オーナー向けの統合日報・売上・スケジュール管理アプリ",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f6f1",
+  "theme_color": "#1d4d45",
+  "lang": "ja",
+  "icons": []
+}
