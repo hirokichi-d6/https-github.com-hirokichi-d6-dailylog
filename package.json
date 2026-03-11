@@ -11,6 +11,8 @@
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:push": "prisma db push",
     "deploy:vercel": "npx vercel --prod"
   },
   "dependencies": {

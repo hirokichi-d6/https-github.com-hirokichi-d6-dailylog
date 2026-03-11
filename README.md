@@ -23,6 +23,7 @@ npm.cmd run dev
 Vercel deployment notes and GitHub upload steps are here:
 
 - [docs/github-vercel.md](./docs/github-vercel.md)
+- [docs/supabase-postgres.md](./docs/supabase-postgres.md)
 
 ### Recommended production setup
 
@@ -46,11 +47,12 @@ This means a Vercel deployment will be shareable from other PCs immediately, but
 ## Notes
 
 - `postinstall` runs `prisma generate`, so Vercel builds can generate the Prisma client automatically.
+- `DIRECT_URL` is used for Prisma migrations against Supabase direct connections.
 - If you only want a public demo URL first, you can deploy without `DATABASE_URL` and connect the database afterward.
 
 ## Next Best Steps
 
-1. Connect `DATABASE_URL` for persistent shared data.
+1. Connect Supabase Postgres with `DATABASE_URL` and `DIRECT_URL`.
 2. Add authentication so each user has separate data.
 3. Replace the demo user flow with Supabase Auth.
 4. Add image upload and voice input.
