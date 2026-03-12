@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 import { todayEntry } from "@/lib/mock-data";
 import { prisma } from "@/lib/prisma";
 import {
@@ -8,6 +9,7 @@ import {
   parseDailyEntryInput
 } from "@/lib/server/daily-entry";
 import { getStoredEntry, listStoredEntrySummaries, saveStoredEntry } from "@/lib/server/file-entry-store";
+import { createServerSupabaseClient, isSupabaseConfigured } from "@/lib/supabase-server";
 import type { DailyEntry, ScheduleItem } from "@/types/domain";
 
 const DEMO_USER_EMAIL = "demo@dailylog.local";
@@ -64,6 +66,14 @@ const summaryResponse = (
     source
   });
 
+const unauthorizedResponse = () =>
+  NextResponse.json(
+    {
+      message: "Unauthorized"
+    },
+    { status: 401 }
+  );
+
 const getDemoUser = async () =>
   prisma.user.upsert({
     where: { email: DEMO_USER_EMAIL },
@@ -73,6 +83,55 @@ const getDemoUser = async () =>
       name: DEMO_USER_NAME
     }
   });
+
+const getAuthenticatedSupabaseUser = async (): Promise<SupabaseUser | null> => {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  return user;
+};
+
+const getRequestUser = async () => {
+  if (!isPrismaAvailable()) {
+    return null;
+  }
+
+  if (!isSupabaseConfigured()) {
+    return getDemoUser();
+  }
+
+  const authUser = await getAuthenticatedSupabaseUser();
+
+  if (!authUser?.email) {
+    return null;
+  }
+
+  return prisma.user.upsert({
+    where: {
+      id: authUser.id
+    },
+    update: {
+      email: authUser.email,
+      name: typeof authUser.user_metadata?.full_name === "string" ? authUser.user_metadata.full_name : authUser.email
+    },
+    create: {
+      id: authUser.id,
+      email: authUser.email,
+      name: typeof authUser.user_metadata?.full_name === "string" ? authUser.user_metadata.full_name : authUser.email
+    }
+  });
+};
 
 const getMonthRange = (month: string) => {
   const [year, monthValue] = month.split("-").map(Number);
@@ -115,8 +174,13 @@ export async function GET(request: NextRequest) {
       return summaryResponse(summaries, summaries.length > 0 ? "file" : "mock");
     }
 
+    const user = await getRequestUser();
+
+    if (!user) {
+      return unauthorizedResponse();
+    }
+
     try {
-      const user = await getDemoUser();
       const range = getMonthRange(month);
       const records = await prisma.dailyEntry.findMany({
         where: {
@@ -145,8 +209,7 @@ export async function GET(request: NextRequest) {
       return summaryResponse(summaries, "database");
     } catch (error) {
       console.error("GET /api/entries?month failed", error);
-      const summaries = await listStoredEntrySummaries(month);
-      return summaryResponse(summaries, summaries.length > 0 ? "file" : "mock");
+      return NextResponse.json({ message: "Failed to load summaries." }, { status: 500 });
     }
   }
 
@@ -155,8 +218,13 @@ export async function GET(request: NextRequest) {
     return entryResponse(storedEntry ?? createBlankEntry(date), storedEntry ? "file" : "mock");
   }
 
+  const user = await getRequestUser();
+
+  if (!user) {
+    return unauthorizedResponse();
+  }
+
   try {
-    const user = await getDemoUser();
     const dayRange = getDayRange(date);
 
     const [record, schedules] = await Promise.all([
@@ -186,19 +254,13 @@ export async function GET(request: NextRequest) {
     const scheduleItems = schedules.map(mapScheduleRecord);
 
     if (!record) {
-      const storedEntry = await getStoredEntry(date);
-      if (storedEntry) {
-        return entryResponse(storedEntry, "file");
-      }
-
-      return entryResponse({ ...createBlankEntry(date), schedules: scheduleItems }, scheduleItems.length > 0 ? "database" : "mock");
+      return entryResponse({ ...createBlankEntry(date), schedules: scheduleItems }, "database");
     }
 
     return entryResponse(mapEntryRecordToDomain(record, scheduleItems), "database");
   } catch (error) {
     console.error("GET /api/entries failed", error);
-    const storedEntry = await getStoredEntry(date);
-    return entryResponse(storedEntry ?? createBlankEntry(date), storedEntry ? "file" : "mock");
+    return NextResponse.json({ message: "Failed to load entry." }, { status: 500 });
   }
 }
 
@@ -214,8 +276,13 @@ export async function PUT(request: NextRequest) {
     return entryResponse(savedEntry, "file");
   }
 
+  const user = await getRequestUser();
+
+  if (!user) {
+    return unauthorizedResponse();
+  }
+
   try {
-    const user = await getDemoUser();
     const entryData = mapDailyEntryToPrisma(payload);
     const dayRange = getDayRange(payload.date);
 
@@ -317,18 +384,6 @@ export async function PUT(request: NextRequest) {
     return entryResponse(mapEntryRecordToDomain(record, schedules.map(mapScheduleRecord)), "database");
   } catch (error) {
     console.error("PUT /api/entries failed", error);
-
-    try {
-      const savedEntry = await saveStoredEntry(payload);
-      return entryResponse(savedEntry, "file");
-    } catch (fileError) {
-      console.error("PUT /api/entries file fallback failed", fileError);
-      return NextResponse.json(
-        {
-          message: "Failed to save daily entry."
-        },
-        { status: 500 }
-      );
-    }
+    return NextResponse.json({ message: "Failed to save daily entry." }, { status: 500 });
   }
 }
