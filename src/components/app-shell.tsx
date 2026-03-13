@@ -1,4 +1,4 @@
-import type { Route } from "next";
+﻿import type { Route } from "next";
 import Link from "next/link";
 import {
   BarChart3,
@@ -37,7 +37,9 @@ export async function AppShell({ children }: AppShellProps) {
         <aside className="rounded-[1.8rem] border border-white/70 bg-white/85 p-3 shadow-panel backdrop-blur lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)] lg:w-[248px] lg:p-5">
           <div className="mb-6 rounded-[1.5rem] bg-moss px-4 py-5 text-cloud">
             <p className="text-[11px] uppercase tracking-[0.28em] text-white/70">DailyLog</p>
-            <h1 className="mt-2 font-display text-[1.65rem] leading-tight">店舗運営を、毎日つながる記録へ。</h1>
+            <h1 className="mt-2 font-display text-[1.65rem] leading-tight">
+              店舗運営を、毎日つながる記録へ。
+            </h1>
             <p className="mt-2 text-sm leading-6 text-white/80">
               日報、売上、予定、メモをひとつにまとめて、振り返りまで見通しやすくするダッシュボードです。
             </p>

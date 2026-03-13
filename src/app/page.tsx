@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { CloudSun, NotebookText, Pin, TrendingUp } from "lucide-react";
 import { SectionCard } from "@/components/section-card";
@@ -7,26 +7,26 @@ import { formatCurrency, formatShortDate } from "@/lib/format";
 import { useDailyLogStore } from "@/lib/store";
 
 const weatherLabelMap = {
-  sunny: "\u6674\u308c",
-  cloudy: "\u66c7\u308a",
-  rainy: "\u96e8",
-  snowy: "\u96ea",
-  other: "\u305d\u306e\u4ed6"
+  sunny: "晴れ",
+  cloudy: "曇り",
+  rainy: "雨",
+  snowy: "雪",
+  other: "その他"
 } as const;
 
 const windLabelMap = {
-  calm: "\u7121\u98a8",
-  light: "\u5fae\u98a8",
-  moderate: "\u3084\u3084\u5f37\u3044",
-  strong: "\u5f37\u3044",
-  veryStrong: "\u975e\u5e38\u306b\u5f37\u3044"
+  calm: "無風",
+  light: "微風",
+  moderate: "やや強い",
+  strong: "強い",
+  veryStrong: "非常に強い"
 } as const;
 
 const syncSourceMap = {
-  local: "local",
-  mock: "mock",
-  file: "file",
-  database: "database"
+  local: "ローカル",
+  mock: "モック",
+  file: "保存ファイル",
+  database: "データベース"
 } as const;
 
 export default function HomePage() {
@@ -47,20 +47,24 @@ export default function HomePage() {
     ? Math.round((savedEntry.sales.total / savedEntry.sales.target) * 100)
     : 0;
   const maxTrend = Math.max(...salesTrend.map((item) => Math.max(item.sales, item.target)), 1);
+  const isFirstSetup =
+    savedEntry.sales.total === 0 &&
+    savedEntry.sales.customers === 0 &&
+    !savedEntry.diary.trim() &&
+    savedEntry.memos.length === 0 &&
+    savedEntry.schedules.length === 0;
 
   return (
     <div className="space-y-4 py-1 sm:space-y-5">
       <section className="overflow-hidden rounded-[1.8rem] bg-moss bg-grain px-5 py-6 text-cloud shadow-panel sm:px-6 sm:py-7">
         <div className="grid gap-5 lg:grid-cols-[1.4fr_320px] lg:items-end">
           <div className="min-w-0 max-w-3xl">
-            <p className="text-[11px] uppercase tracking-[0.28em] text-white/70">{"\u30c0\u30c3\u30b7\u30e5\u30dc\u30fc\u30c9"}</p>
+            <p className="text-[11px] uppercase tracking-[0.28em] text-white/70">ダッシュボード</p>
             <h2 className="mt-2 font-display text-[1.9rem] leading-tight sm:text-[2.45rem]">
-              {"\u4eca\u65e5\u306e\u5e97\u8217\u72b6\u6cc1\u3092\u3001\u3072\u3068\u76ee\u3067\u78ba\u8a8d\u3002"}
+              今日の店舗状況を、ひと目で確認。
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-white/80">
-              {
-                "\u65e5\u5831\u3001\u58f2\u4e0a\u3001\u4e88\u5b9a\u3001\u30e1\u30e2\u3092\u540c\u3058\u65e5\u4ed8\u306b\u7d10\u3065\u3051\u3066\u3001\u5165\u529b\u304b\u3089\u632f\u308a\u8fd4\u308a\u307e\u3067\u3092\u3072\u3068\u3064\u306e\u6d41\u308c\u3067\u898b\u3089\u308c\u307e\u3059\u3002"
-              }
+              日報、売上、予定、メモを同じ日付に紐づけて、入力から振り返りまでをひとつの流れで見られます。
             </p>
           </div>
           <div className="rounded-[1.4rem] bg-white/10 p-4 backdrop-blur">
@@ -68,55 +72,86 @@ export default function HomePage() {
             <div className="mt-2 flex items-center gap-3 text-xl font-semibold sm:text-2xl">
               <CloudSun className="h-6 w-6 shrink-0" />
               <span className="truncate">
-                {weatherLabelMap[savedEntry.weather]} {savedEntry.temperature}{"\u2103"}
+                {weatherLabelMap[savedEntry.weather]} {savedEntry.temperature}℃
               </span>
             </div>
             <p className="mt-2 text-sm text-white/75">
-              {"\u98a8"}: {windLabelMap[savedEntry.wind]} / {lastSavedAt
-                ? `\u6700\u7d42\u4fdd\u5b58 ${new Date(lastSavedAt).toLocaleTimeString("ja-JP", {
+              風: {windLabelMap[savedEntry.wind]} / {lastSavedAt
+                ? `最終保存 ${new Date(lastSavedAt).toLocaleTimeString("ja-JP", {
                     hour: "2-digit",
                     minute: "2-digit"
                   })}`
-                : "\u672a\u4fdd\u5b58"}
+                : "未保存"}
             </p>
-            <p className="mt-2 text-xs text-white/60">{`\u4fdd\u5b58\u5143: ${syncSourceMap[syncSource]}`}</p>
+            <p className="mt-2 text-xs text-white/60">{`保存元: ${syncSourceMap[syncSource]}`}</p>
           </div>
         </div>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label={"\u4eca\u65e5\u306e\u58f2\u4e0a"}
+          label="今日の売上"
           value={formatCurrency(savedEntry.sales.total)}
-          hint={`\u76ee\u6a19 ${formatCurrency(savedEntry.sales.target)}`}
+          hint={`目標 ${formatCurrency(savedEntry.sales.target)}`}
           accent="ember"
           icon={<TrendingUp className="h-4 w-4" />}
         />
         <StatCard
-          label={"\u76ee\u6a19\u9054\u6210\u7387"}
+          label="目標達成率"
           value={`${achievedRate}%`}
-          hint={syncMessage ?? "\u4fdd\u5b58\u72b6\u6cc1\u306f\u3053\u3053\u306b\u8868\u793a\u3055\u308c\u307e\u3059\u3002"}
+          hint={syncMessage ?? "保存状況はここに表示されます。"}
           accent="moss"
           icon={<TrendingUp className="h-4 w-4" />}
         />
         <StatCard
-          label={"\u5ba2\u6570"}
+          label="客数"
           value={`${savedEntry.sales.customers}`}
-          hint={`\u5ba2\u5358\u4fa1 ${formatCurrency(savedEntry.sales.averageSpend)}`}
+          hint={`客単価 ${formatCurrency(savedEntry.sales.averageSpend)}`}
           icon={<NotebookText className="h-4 w-4" />}
         />
         <StatCard
-          label={"\u30e1\u30e2\u6570"}
+          label="メモ数"
           value={`${savedEntry.memos.length}`}
-          hint={"\u30d4\u30f3\u7559\u3081\u3059\u308b\u3068\u4e0b\u306b\u307e\u3068\u307e\u3063\u3066\u8868\u793a\u3055\u308c\u307e\u3059\u3002"}
+          hint="ピン留めすると下にまとまって表示されます。"
           icon={<Pin className="h-4 w-4" />}
         />
       </section>
 
+      {isFirstSetup ? (
+        <SectionCard
+          title="はじめ方"
+          description="最初の記録は3分くらいで作れます。迷ったらこの順に触るのがおすすめです。"
+        >
+          <div className="grid gap-3 md:grid-cols-3">
+            <article className="rounded-[1.25rem] bg-oat p-4">
+              <p className="text-[11px] uppercase tracking-[0.28em] text-ink/45">Step 1</p>
+              <p className="mt-3 font-semibold text-ink">記録で売上と日記を入れる</p>
+              <p className="mt-2 text-sm leading-6 text-ink/75">
+                まずは今日の売上、客数、ひとことメモだけでも入れるとホームが動き始めます。
+              </p>
+            </article>
+            <article className="rounded-[1.25rem] bg-oat p-4">
+              <p className="text-[11px] uppercase tracking-[0.28em] text-ink/45">Step 2</p>
+              <p className="mt-3 font-semibold text-ink">カレンダーで別日も見る</p>
+              <p className="mt-2 text-sm leading-6 text-ink/75">
+                日付を切り替えて、過去分の入力や予定確認ができるようになります。
+              </p>
+            </article>
+            <article className="rounded-[1.25rem] bg-oat p-4">
+              <p className="text-[11px] uppercase tracking-[0.28em] text-ink/45">Step 3</p>
+              <p className="mt-3 font-semibold text-ink">分析とメモで振り返る</p>
+              <p className="mt-2 text-sm leading-6 text-ink/75">
+                データが増えるほど、売上の流れや残しておきたい気づきが見やすくなります。
+              </p>
+            </article>
+          </div>
+        </SectionCard>
+      ) : null}
+
       <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
         <SectionCard
-          title={"\u58f2\u4e0a\u30b5\u30de\u30ea\u30fc"}
-          description={"\u9031\u9593\u306e\u58f2\u4e0a\u63a8\u79fb\u3092\u3001\u30b9\u30af\u30ed\u30fc\u30eb\u306a\u3057\u3067\u5168\u4ef6\u898b\u6e21\u305b\u308b\u5e45\u306b\u6574\u3048\u3066\u3044\u307e\u3059\u3002"}
+          title="売上サマリー"
+          description="週間の売上推移を、スクロールなしで全件見渡せる幅に整えています。"
           className="overflow-hidden"
         >
           <div className="space-y-3">
@@ -139,15 +174,15 @@ export default function HomePage() {
         </SectionCard>
 
         <SectionCard
-          title={"\u76f4\u8fd1\u306e\u4e88\u5b9a"}
-          description={"\u4eca\u65e5\u304b\u3089\u6570\u65e5\u5148\u307e\u3067\u306e\u52d5\u304d\u3092\u78ba\u8a8d\u3067\u304d\u307e\u3059\u3002"}
+          title="直近の予定"
+          description="今日から数日先までの動きを確認できます。"
         >
           <div className="space-y-2.5">
             {upcomingSchedules.slice(0, 4).map((schedule) => (
               <div key={schedule.id} className="rounded-[1.2rem] border border-oat bg-cloud px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate font-semibold text-ink">{schedule.title || "\u4e88\u5b9a"}</p>
+                    <p className="truncate font-semibold text-ink">{schedule.title || "予定"}</p>
                     <p className="mt-1 text-sm text-ink/65">
                       {formatShortDate(schedule.start)} {new Date(schedule.start).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
                     </p>
@@ -164,13 +199,13 @@ export default function HomePage() {
 
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <SectionCard
-          title={"\u4eca\u65e5\u306e\u8a18\u9332"}
-          description={"\u65e5\u8a18\u3001\u30e1\u30e2\u3001\u30ab\u30c6\u30b4\u30ea\u5225\u58f2\u4e0a\u3092\u307e\u3068\u3081\u3066\u78ba\u8a8d\u3067\u304d\u307e\u3059\u3002"}
+          title="今日の記録"
+          description="日記、メモ、カテゴリ別売上をまとめて確認できます。"
         >
           <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
             <article className="rounded-[1.3rem] bg-oat p-4">
-              <p className="text-[11px] uppercase tracking-[0.28em] text-ink/45">{"\u65e5\u8a18"}</p>
-              <p className="mt-3 text-sm leading-7 text-ink/80">{savedEntry.diary || "\u307e\u3060\u8a18\u9332\u304c\u3042\u308a\u307e\u305b\u3093\u3002"}</p>
+              <p className="text-[11px] uppercase tracking-[0.28em] text-ink/45">日記</p>
+              <p className="mt-3 text-sm leading-7 text-ink/80">{savedEntry.diary || "まだ記録がありません。"}</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {savedEntry.tags.map((tag) => (
                   <span key={tag} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-ink/70">
@@ -181,7 +216,7 @@ export default function HomePage() {
             </article>
 
             <article className="rounded-[1.3rem] bg-white p-4 ring-1 ring-oat">
-              <p className="text-[11px] uppercase tracking-[0.28em] text-ink/45">{"\u30ab\u30c6\u30b4\u30ea\u5225\u58f2\u4e0a"}</p>
+              <p className="text-[11px] uppercase tracking-[0.28em] text-ink/45">カテゴリ別売上</p>
               <div className="mt-3 space-y-2.5">
                 {savedEntry.sales.categories.map((category) => (
                   <div key={category.id} className="flex items-center justify-between gap-3 text-sm">
@@ -190,26 +225,26 @@ export default function HomePage() {
                   </div>
                 ))}
               </div>
-              <p className="mt-4 text-sm leading-6 text-ink/70">{savedEntry.sales.note || "\u58f2\u4e0a\u30e1\u30e2\u306f\u307e\u3060\u3042\u308a\u307e\u305b\u3093\u3002"}</p>
+              <p className="mt-4 text-sm leading-6 text-ink/70">{savedEntry.sales.note || "売上メモはまだありません。"}</p>
             </article>
           </div>
         </SectionCard>
 
         <SectionCard
-          title={"\u30d4\u30f3\u7559\u3081\u30e1\u30e2"}
-          description={"\u5f8c\u3067\u898b\u8fd4\u3057\u305f\u3044\u30e1\u30e2\u3092\u3053\u3053\u306b\u96c6\u3081\u3066\u304a\u3051\u307e\u3059\u3002"}
+          title="ピン留めメモ"
+          description="後で見返したいメモをここに集めておけます。"
         >
           <div className="space-y-2.5">
             {derivedPinnedMemos.length > 0 ? (
               derivedPinnedMemos.map((memo) => (
                 <article key={memo.id} className="rounded-[1.25rem] bg-oat p-4">
-                  <p className="font-semibold text-ink">{memo.title || "\u30e1\u30e2"}</p>
-                  <p className="mt-2 text-sm leading-6 text-ink/75">{memo.content || "\u5185\u5bb9\u306f\u307e\u3060\u3042\u308a\u307e\u305b\u3093\u3002"}</p>
+                  <p className="font-semibold text-ink">{memo.title || "メモ"}</p>
+                  <p className="mt-2 text-sm leading-6 text-ink/75">{memo.content || "内容はまだありません。"}</p>
                 </article>
               ))
             ) : (
               <article className="rounded-[1.25rem] bg-oat p-4 text-sm text-ink/60">
-                {"\u30d4\u30f3\u7559\u3081\u3055\u308c\u305f\u30e1\u30e2\u306f\u307e\u3060\u3042\u308a\u307e\u305b\u3093\u3002"}
+                ピン留めされたメモはまだありません。
               </article>
             )}
           </div>
