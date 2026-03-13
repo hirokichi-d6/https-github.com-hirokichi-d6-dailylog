@@ -117,36 +117,38 @@ export default function HomePage() {
         />
       </section>
 
-      {isFirstSetup ? (
-        <SectionCard
-          title="はじめ方"
-          description="最初の記録は3分くらいで作れます。迷ったらこの順に触るのがおすすめです。"
-        >
-          <div className="grid gap-3 md:grid-cols-3">
-            <article className="rounded-[1.25rem] bg-oat p-4">
-              <p className="text-[11px] uppercase tracking-[0.28em] text-ink/45">Step 1</p>
-              <p className="mt-3 font-semibold text-ink">記録で売上と日記を入れる</p>
-              <p className="mt-2 text-sm leading-6 text-ink/75">
-                まずは今日の売上、客数、ひとことメモだけでも入れるとホームが動き始めます。
-              </p>
-            </article>
-            <article className="rounded-[1.25rem] bg-oat p-4">
-              <p className="text-[11px] uppercase tracking-[0.28em] text-ink/45">Step 2</p>
-              <p className="mt-3 font-semibold text-ink">カレンダーで別日も見る</p>
-              <p className="mt-2 text-sm leading-6 text-ink/75">
-                日付を切り替えて、過去分の入力や予定確認ができるようになります。
-              </p>
-            </article>
-            <article className="rounded-[1.25rem] bg-oat p-4">
-              <p className="text-[11px] uppercase tracking-[0.28em] text-ink/45">Step 3</p>
-              <p className="mt-3 font-semibold text-ink">分析とメモで振り返る</p>
-              <p className="mt-2 text-sm leading-6 text-ink/75">
-                データが増えるほど、売上の流れや残しておきたい気づきが見やすくなります。
-              </p>
-            </article>
-          </div>
-        </SectionCard>
-      ) : null}
+      <SectionCard
+        title={isFirstSetup ? "はじめ方" : "使い方メモ"}
+        description={
+          isFirstSetup
+            ? "最初の記録は3分くらいで作れます。迷ったらこの順に触るのがおすすめです。"
+            : "迷ったときに戻れるよう、よく使う流れをここに残しています。"
+        }
+      >
+        <div className="grid gap-3 md:grid-cols-3">
+          <article className="rounded-[1.25rem] bg-oat p-4">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-ink/45">Step 1</p>
+            <p className="mt-3 font-semibold text-ink">記録で売上と日記を入れる</p>
+            <p className="mt-2 text-sm leading-6 text-ink/75">
+              まずは今日の売上、客数、ひとことメモだけでも入れるとホームが動き始めます。
+            </p>
+          </article>
+          <article className="rounded-[1.25rem] bg-oat p-4">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-ink/45">Step 2</p>
+            <p className="mt-3 font-semibold text-ink">カレンダーで別日も見る</p>
+            <p className="mt-2 text-sm leading-6 text-ink/75">
+              日付を切り替えて、過去分の入力や予定確認ができるようになります。
+            </p>
+          </article>
+          <article className="rounded-[1.25rem] bg-oat p-4">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-ink/45">Step 3</p>
+            <p className="mt-3 font-semibold text-ink">分析とメモで振り返る</p>
+            <p className="mt-2 text-sm leading-6 text-ink/75">
+              データが増えるほど、売上の流れや残しておきたい気づきが見やすくなります。
+            </p>
+          </article>
+        </div>
+      </SectionCard>
 
       <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
         <SectionCard
@@ -253,3 +255,4 @@ export default function HomePage() {
     </div>
   );
 }
+
