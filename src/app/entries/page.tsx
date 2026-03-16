@@ -294,12 +294,31 @@ export default function EntriesPage() {
                 </select>
               </label>
               <label className="block text-sm font-medium text-ink/75">
-                気温
+                最低気温
                 <input
                   className={inputClassName}
-                  value={draftEntry.temperature}
-                  onChange={(event) => updateEntryField("temperature", Number(event.target.value || 0))}
+                  value={draftEntry.temperatureMin ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    updateEntryField("temperatureMin", value === "" ? null : Number(value));
+                  }}
                   type="number"
+                  step="0.1"
+                  placeholder="例: 8.5"
+                />
+              </label>
+              <label className="block text-sm font-medium text-ink/75">
+                最高気温
+                <input
+                  className={inputClassName}
+                  value={draftEntry.temperatureMax ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    updateEntryField("temperatureMax", value === "" ? null : Number(value));
+                  }}
+                  type="number"
+                  step="0.1"
+                  placeholder="例: 16.0"
                 />
               </label>
               <label className="block text-sm font-medium text-ink/75">

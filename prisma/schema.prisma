@@ -42,6 +42,8 @@ model DailyEntry {
   date         DateTime
   weather      Weather?
   temperature  Decimal?      @db.Decimal(4, 1)
+  temperatureMin Decimal?   @db.Decimal(4, 1)
+  temperatureMax Decimal?   @db.Decimal(4, 1)
   windStrength WindStrength?
   diaryContent String?
   tags         String[]

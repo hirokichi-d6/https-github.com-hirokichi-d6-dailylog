@@ -24,6 +24,47 @@ const scheduleCategories = ["業務", "仕入れ", "会議", "プライベート
 const isScheduleCategory = (value: string): value is ScheduleItem["category"] =>
   scheduleCategories.includes(value as ScheduleItem["category"]);
 
+const optionalNumber = (value: unknown) => {
+  if (value === null || typeof value === "undefined" || value === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const roundTemperature = (value: number) => Math.round(value * 10) / 10;
+
+const normalizeTemperatureFields = (
+  temperature: unknown,
+  temperatureMin: unknown,
+  temperatureMax: unknown
+) => {
+  let nextMin = optionalNumber(temperatureMin);
+  let nextMax = optionalNumber(temperatureMax);
+  const legacyTemperature = optionalNumber(temperature);
+
+  if (nextMin === null && nextMax === null && legacyTemperature !== null && legacyTemperature !== 0) {
+    nextMin = legacyTemperature;
+    nextMax = legacyTemperature;
+  }
+
+  if (nextMin !== null && nextMax !== null && nextMin > nextMax) {
+    [nextMin, nextMax] = [nextMax, nextMin];
+  }
+
+  const representativeTemperature =
+    nextMin !== null && nextMax !== null
+      ? roundTemperature((nextMin + nextMax) / 2)
+      : nextMax ?? nextMin ?? legacyTemperature ?? 0;
+
+  return {
+    temperature: representativeTemperature,
+    temperatureMin: nextMin,
+    temperatureMax: nextMax
+  };
+};
+
 const normalizeSales = (sales: SalesSnapshot): SalesSnapshot => {
   const customers = Math.max(0, Math.floor(Number(sales.customers) || 0));
   const total = Math.max(0, Math.floor(Number(sales.total) || 0));
@@ -85,7 +126,7 @@ const normalizeAttachment = (attachment: EntryAttachment): EntryAttachment => ({
 
 const normalizeEntry = (entry: DailyEntry): DailyEntry => ({
   ...entry,
-  temperature: Number(entry.temperature) || 0,
+  ...normalizeTemperatureFields(entry.temperature, entry.temperatureMin, entry.temperatureMax),
   tags: entry.tags.map((tag) => tag.trim()).filter(Boolean),
   sales: normalizeSales(entry.sales),
   schedules: (entry.schedules ?? [])
@@ -184,7 +225,7 @@ type DailyLogState = {
   syncSource: SyncSource;
   syncMessage: string | null;
   hasBootstrapped: boolean;
-  updateEntryField: <K extends keyof Pick<DailyEntry, "date" | "weather" | "temperature" | "wind" | "diary">>(
+  updateEntryField: <K extends keyof Pick<DailyEntry, "date" | "weather" | "temperature" | "temperatureMin" | "temperatureMax" | "wind" | "diary">>(
     field: K,
     value: DailyEntry[K]
   ) => void;

@@ -32,6 +32,8 @@ const createBlankEntry = (date: string): DailyEntry => ({
   id: `entry-${date.slice(0, 10)}`,
   date,
   temperature: 0,
+  temperatureMin: null,
+  temperatureMax: null,
   wind: "calm",
   diary: "",
   tags: [],
@@ -337,6 +339,8 @@ export async function PUT(request: NextRequest) {
         date: entryData.date,
         weather: entryData.weather,
         temperature: entryData.temperature,
+        temperatureMin: entryData.temperatureMin,
+        temperatureMax: entryData.temperatureMax,
         windStrength: entryData.windStrength,
         diaryContent: entryData.diaryContent,
         tags: entryData.tags
@@ -344,6 +348,8 @@ export async function PUT(request: NextRequest) {
       update: {
         weather: entryData.weather,
         temperature: entryData.temperature,
+        temperatureMin: entryData.temperatureMin,
+        temperatureMax: entryData.temperatureMax,
         windStrength: entryData.windStrength,
         diaryContent: entryData.diaryContent,
         tags: entryData.tags

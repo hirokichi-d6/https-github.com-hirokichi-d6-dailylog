@@ -1,4 +1,4 @@
-﻿export type Weather = "sunny" | "cloudy" | "rainy" | "snowy" | "other";
+export type Weather = "sunny" | "cloudy" | "rainy" | "snowy" | "other";
 export type WindStrength = "calm" | "light" | "moderate" | "strong" | "veryStrong";
 
 export type SalesCategory = {
@@ -49,6 +49,8 @@ export type DailyEntry = {
   date: string;
   weather: Weather;
   temperature: number;
+  temperatureMin: number | null;
+  temperatureMax: number | null;
   wind: WindStrength;
   diary: string;
   tags: string[];

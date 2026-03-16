@@ -31,6 +31,8 @@ type EntryRecord = {
   date: Date;
   weather: "SUNNY" | "CLOUDY" | "RAINY" | "SNOWY" | "OTHER" | null;
   temperature: unknown;
+  temperatureMin: unknown;
+  temperatureMax: unknown;
   windStrength: "CALM" | "LIGHT" | "MODERATE" | "STRONG" | "VERY_STRONG" | null;
   diaryContent: string | null;
   tags: string[];
@@ -87,6 +89,47 @@ const maxAttachmentDataUrlLength = 4_000_000;
 const numberValue = (value: unknown) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const optionalNumberValue = (value: unknown) => {
+  if (value === null || typeof value === "undefined" || value === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const roundTemperature = (value: number) => Math.round(value * 10) / 10;
+
+const normalizeTemperatureFields = (
+  temperature: unknown,
+  temperatureMin: unknown,
+  temperatureMax: unknown
+) => {
+  let nextMin = optionalNumberValue(temperatureMin);
+  let nextMax = optionalNumberValue(temperatureMax);
+  const legacyTemperature = optionalNumberValue(temperature);
+
+  if (nextMin === null && nextMax === null && legacyTemperature !== null && legacyTemperature !== 0) {
+    nextMin = legacyTemperature;
+    nextMax = legacyTemperature;
+  }
+
+  if (nextMin !== null && nextMax !== null && nextMin > nextMax) {
+    [nextMin, nextMax] = [nextMax, nextMin];
+  }
+
+  const representativeTemperature =
+    nextMin !== null && nextMax !== null
+      ? roundTemperature((nextMin + nextMax) / 2)
+      : nextMax ?? nextMin ?? legacyTemperature ?? 0;
+
+  return {
+    temperature: representativeTemperature,
+    temperatureMin: nextMin,
+    temperatureMax: nextMax
+  };
 };
 
 const isScheduleCategory = (value: string): value is ScheduleItem["category"] =>
@@ -154,7 +197,7 @@ export const normalizeSalesSnapshot = (sales: SalesSnapshot): SalesSnapshot => {
 
 export const normalizeDailyEntry = (entry: DailyEntry): DailyEntry => ({
   ...entry,
-  temperature: numberValue(entry.temperature),
+  ...normalizeTemperatureFields(entry.temperature, entry.temperatureMin, entry.temperatureMax),
   tags: entry.tags.map((tag) => tag.trim()).filter(Boolean),
   sales: normalizeSalesSnapshot(entry.sales),
   schedules: entry.schedules
@@ -215,7 +258,7 @@ export const mapEntryRecordToDomain = (record: EntryRecord, schedules: ScheduleI
     id: record.id,
     date: record.date.toISOString(),
     weather: record.weather ? reverseWeatherMap[record.weather] : "sunny",
-    temperature: numberValue(record.temperature),
+    ...normalizeTemperatureFields(record.temperature, record.temperatureMin, record.temperatureMax),
     wind: record.windStrength ? reverseWindMap[record.windStrength] : "calm",
     diary: record.diaryContent ?? "",
     tags: record.tags,
@@ -233,6 +276,8 @@ export const mapDailyEntryToPrisma = (entry: DailyEntry) => {
     date: new Date(normalized.date),
     weather: weatherMap[normalized.weather],
     temperature: normalized.temperature,
+    temperatureMin: normalized.temperatureMin,
+    temperatureMax: normalized.temperatureMax,
     windStrength: windMap[normalized.wind],
     diaryContent: normalized.diary,
     tags: normalized.tags,
@@ -303,7 +348,7 @@ export const parseDailyEntryInput = (payload: unknown): DailyEntry | null => {
     id: entry.id,
     date: entry.date,
     weather,
-    temperature: numberValue(entry.temperature),
+    ...normalizeTemperatureFields(entry.temperature, entry.temperatureMin, entry.temperatureMax),
     wind,
     diary: entry.diary,
     tags: entry.tags.filter((tag): tag is string => typeof tag === "string"),

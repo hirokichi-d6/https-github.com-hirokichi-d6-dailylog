@@ -1,10 +1,12 @@
-﻿import type { DailyEntry, MemoItem, SalesTrendPoint, ScheduleItem } from "@/types/domain";
+import type { DailyEntry, MemoItem, SalesTrendPoint, ScheduleItem } from "@/types/domain";
 
 export const todayEntry: DailyEntry = {
   id: "entry-today",
   date: "2026-03-09T09:00:00+09:00",
   weather: "sunny",
   temperature: 16,
+  temperatureMin: 9,
+  temperatureMax: 16,
   wind: "light",
   diary:
     "新商品の試飲導線が機能し、夕方の来店数が伸びた。スタッフ共有用に陳列写真を残しておく。",

@@ -1,4 +1,4 @@
-﻿export const formatCurrency = (value: number) =>
+export const formatCurrency = (value: number) =>
   new Intl.NumberFormat("ja-JP", {
     style: "currency",
     currency: "JPY",
@@ -24,4 +24,28 @@ export const formatFileSize = (value: number) => {
   }
 
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+export const formatTemperatureRange = (
+  temperature: number,
+  temperatureMin: number | null,
+  temperatureMax: number | null
+) => {
+  if (temperatureMin !== null && temperatureMax !== null) {
+    if (temperatureMin === temperatureMax) {
+      return String(temperatureMin) + "\u2103";
+    }
+
+    return String(temperatureMin) + "\u301C" + String(temperatureMax) + "\u2103";
+  }
+
+  if (temperatureMax !== null) {
+    return String(temperatureMax) + "\u2103";
+  }
+
+  if (temperatureMin !== null) {
+    return String(temperatureMin) + "\u2103";
+  }
+
+  return String(temperature) + "\u2103";
 };

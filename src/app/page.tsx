@@ -1,10 +1,10 @@
-﻿"use client";
+"use client";
 
 import Image from "next/image";
 import { CloudSun, ImageIcon, NotebookText, Pin, TrendingUp } from "lucide-react";
 import { SectionCard } from "@/components/section-card";
 import { StatCard } from "@/components/stat-card";
-import { formatCurrency, formatFileSize, formatShortDate } from "@/lib/format";
+import { formatCurrency, formatFileSize, formatShortDate, formatTemperatureRange } from "@/lib/format";
 import { useDailyLogStore } from "@/lib/store";
 
 const weatherLabelMap = {
@@ -60,6 +60,11 @@ export default function HomePage() {
     schedules.length === 0 &&
     attachments.length === 0;
   const leadAttachment = attachments[0] ?? null;
+  const temperatureLabel = formatTemperatureRange(
+    savedEntry.temperature,
+    savedEntry.temperatureMin,
+    savedEntry.temperatureMax
+  );
 
   return (
     <div className="space-y-4 py-1 sm:space-y-5">
@@ -79,7 +84,7 @@ export default function HomePage() {
             <div className="mt-2 flex items-center gap-3 text-xl font-semibold sm:text-2xl">
               <CloudSun className="h-6 w-6 shrink-0" />
               <span className="truncate">
-                {weatherLabelMap[savedEntry.weather]} {savedEntry.temperature}℃
+                {weatherLabelMap[savedEntry.weather]} {temperatureLabel}
               </span>
             </div>
             <p className="mt-2 text-sm text-white/75">
