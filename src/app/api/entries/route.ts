@@ -6,7 +6,8 @@ import {
   mapDailyEntryToPrisma,
   mapEntryRecordToDomain,
   normalizeDailyEntry,
-  parseDailyEntryInput
+  parseDailyEntryInput,
+  pruneExpiredAttachments
 } from "@/lib/server/daily-entry";
 import { getStoredEntry, listStoredEntrySummaries, saveStoredEntry } from "@/lib/server/file-entry-store";
 import { createServerSupabaseClient, isSupabaseConfigured } from "@/lib/supabase-server";
@@ -20,7 +21,8 @@ const entryInclude = {
     include: {
       categories: true
     }
-  }
+  },
+  attachments: true
 } as const;
 
 const isPrismaAvailable = () => Boolean(process.env.DATABASE_URL);
@@ -46,7 +48,8 @@ const createBlankEntry = (date: string): DailyEntry => ({
     }))
   },
   schedules: [],
-  memos: []
+  memos: [],
+  attachments: []
 });
 
 const entryResponse = (entry: DailyEntry, source: "mock" | "database" | "file") =>
@@ -73,6 +76,15 @@ const unauthorizedResponse = () =>
     },
     { status: 401 }
   );
+
+const isLocalDevelopmentRequest = (request: NextRequest) => {
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+
+  const hostname = request.nextUrl.hostname;
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+};
 
 const getDemoUser = async () =>
   prisma.user.upsert({
@@ -102,7 +114,7 @@ const getAuthenticatedSupabaseUser = async (): Promise<SupabaseUser | null> => {
   return user;
 };
 
-const getRequestUser = async () => {
+const getRequestUser = async (request: NextRequest) => {
   if (!isPrismaAvailable()) {
     return null;
   }
@@ -114,6 +126,10 @@ const getRequestUser = async () => {
   const authUser = await getAuthenticatedSupabaseUser();
 
   if (!authUser?.email) {
+    if (isLocalDevelopmentRequest(request)) {
+      return getDemoUser();
+    }
+
     return null;
   }
 
@@ -164,6 +180,23 @@ const mapScheduleRecord = (record: {
   reminderMinutes: record.reminderMinutes
 });
 
+const deleteExpiredDatabaseAttachments = async (userId: string) => {
+  await prisma.attachment.deleteMany({
+    where: {
+      keepForever: false,
+      expiresAt: {
+        not: null,
+        lte: new Date()
+      },
+      entry: {
+        is: {
+          userId
+        }
+      }
+    }
+  });
+};
+
 export async function GET(request: NextRequest) {
   const month = request.nextUrl.searchParams.get("month");
   const date = request.nextUrl.searchParams.get("date") ?? todayEntry.date;
@@ -174,13 +207,15 @@ export async function GET(request: NextRequest) {
       return summaryResponse(summaries, summaries.length > 0 ? "file" : "mock");
     }
 
-    const user = await getRequestUser();
+    const user = await getRequestUser(request);
 
     if (!user) {
       return unauthorizedResponse();
     }
 
     try {
+      await deleteExpiredDatabaseAttachments(user.id);
+
       const range = getMonthRange(month);
       const records = await prisma.dailyEntry.findMany({
         where: {
@@ -218,13 +253,15 @@ export async function GET(request: NextRequest) {
     return entryResponse(storedEntry ?? createBlankEntry(date), storedEntry ? "file" : "mock");
   }
 
-  const user = await getRequestUser();
+  const user = await getRequestUser(request);
 
   if (!user) {
     return unauthorizedResponse();
   }
 
   try {
+    await deleteExpiredDatabaseAttachments(user.id);
+
     const dayRange = getDayRange(date);
 
     const [record, schedules] = await Promise.all([
@@ -272,18 +309,20 @@ export async function PUT(request: NextRequest) {
   }
 
   if (!isPrismaAvailable()) {
-    const savedEntry = await saveStoredEntry(payload);
+    const savedEntry = await saveStoredEntry(pruneExpiredAttachments(payload));
     return entryResponse(savedEntry, "file");
   }
 
-  const user = await getRequestUser();
+  const user = await getRequestUser(request);
 
   if (!user) {
     return unauthorizedResponse();
   }
 
   try {
-    const entryData = mapDailyEntryToPrisma(payload);
+    await deleteExpiredDatabaseAttachments(user.id);
+
+    const entryData = mapDailyEntryToPrisma(pruneExpiredAttachments(payload));
     const dayRange = getDayRange(payload.date);
 
     const savedEntry = await prisma.dailyEntry.upsert({
@@ -356,6 +395,27 @@ export async function PUT(request: NextRequest) {
           endDatetime: schedule.endDatetime,
           category: schedule.category,
           reminderMinutes: schedule.reminderMinutes
+        }))
+      });
+    }
+
+    await prisma.attachment.deleteMany({
+      where: {
+        entryId: savedEntry.id
+      }
+    });
+
+    if (entryData.attachments.length > 0) {
+      await prisma.attachment.createMany({
+        data: entryData.attachments.map((attachment) => ({
+          entryId: savedEntry.id,
+          fileName: attachment.fileName,
+          fileUrl: attachment.fileUrl,
+          fileType: attachment.fileType,
+          fileSize: attachment.fileSize,
+          keepForever: attachment.keepForever,
+          expiresAt: attachment.expiresAt,
+          createdAt: attachment.createdAt
         }))
       });
     }

@@ -1,9 +1,10 @@
 ﻿"use client";
 
-import { CloudSun, NotebookText, Pin, TrendingUp } from "lucide-react";
+import Image from "next/image";
+import { CloudSun, ImageIcon, NotebookText, Pin, TrendingUp } from "lucide-react";
 import { SectionCard } from "@/components/section-card";
 import { StatCard } from "@/components/stat-card";
-import { formatCurrency, formatShortDate } from "@/lib/format";
+import { formatCurrency, formatFileSize, formatShortDate } from "@/lib/format";
 import { useDailyLogStore } from "@/lib/store";
 
 const weatherLabelMap = {
@@ -38,9 +39,13 @@ export default function HomePage() {
   const syncSource = useDailyLogStore((state) => state.syncSource);
   const syncMessage = useDailyLogStore((state) => state.syncMessage);
 
+  const attachments = savedEntry.attachments ?? [];
+  const memos = savedEntry.memos ?? [];
+  const schedules = savedEntry.schedules ?? [];
+
   const derivedPinnedMemos = [
-    ...savedEntry.memos.filter((memo) => memo.pinned),
-    ...pinnedMemos.filter((memo) => !savedEntry.memos.some((entryMemo) => entryMemo.id === memo.id))
+    ...memos.filter((memo) => memo.pinned),
+    ...pinnedMemos.filter((memo) => !memos.some((entryMemo) => entryMemo.id === memo.id))
   ];
 
   const achievedRate = savedEntry.sales.target > 0
@@ -51,8 +56,10 @@ export default function HomePage() {
     savedEntry.sales.total === 0 &&
     savedEntry.sales.customers === 0 &&
     !savedEntry.diary.trim() &&
-    savedEntry.memos.length === 0 &&
-    savedEntry.schedules.length === 0;
+    memos.length === 0 &&
+    schedules.length === 0 &&
+    attachments.length === 0;
+  const leadAttachment = attachments[0] ?? null;
 
   return (
     <div className="space-y-4 py-1 sm:space-y-5">
@@ -111,7 +118,7 @@ export default function HomePage() {
         />
         <StatCard
           label="メモ数"
-          value={`${savedEntry.memos.length}`}
+          value={`${memos.length}`}
           hint="ピン留めすると下にまとまって表示されます。"
           icon={<Pin className="h-4 w-4" />}
         />
@@ -135,9 +142,9 @@ export default function HomePage() {
           </article>
           <article className="rounded-[1.25rem] bg-oat p-4">
             <p className="text-[11px] uppercase tracking-[0.28em] text-ink/45">Step 2</p>
-            <p className="mt-3 font-semibold text-ink">カレンダーで別日も見る</p>
+            <p className="mt-3 font-semibold text-ink">画像も一緒に残す</p>
             <p className="mt-2 text-sm leading-6 text-ink/75">
-              日付を切り替えて、過去分の入力や予定確認ができるようになります。
+              売場や店頭の写真を同じ日に添付しておくと、前年同時期の見直しがかなりしやすくなります。
             </p>
           </article>
           <article className="rounded-[1.25rem] bg-oat p-4">
@@ -233,6 +240,42 @@ export default function HomePage() {
         </SectionCard>
 
         <SectionCard
+          title="添付画像"
+          description="その日の売場や店頭の写真をここから見返せます。"
+        >
+          {leadAttachment ? (
+            <div className="space-y-3">
+              <Image
+                src={leadAttachment.url}
+                alt={leadAttachment.name}
+                width={1200}
+                height={900}
+                unoptimized
+                className="aspect-[4/3] w-full rounded-[1.2rem] object-cover"
+              />
+              <div className="rounded-[1.2rem] bg-oat p-4">
+                <p className="font-semibold text-ink">{leadAttachment.name}</p>
+                <p className="mt-2 text-sm text-ink/70">{formatFileSize(leadAttachment.size)} / 全 {savedEntry.attachments.length} 枚</p>
+                <p className="mt-2 text-sm text-ink/70">
+                  {leadAttachment.keepForever
+                    ? "この画像は期限なしで保持します。"
+                    : `削除予定 ${leadAttachment.expiresAt ? formatShortDate(leadAttachment.expiresAt) : "未設定"}`}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <article className="rounded-[1.25rem] bg-oat p-4 text-sm text-ink/60">
+              <div className="flex items-center gap-2 text-ink/75">
+                <ImageIcon className="h-4 w-4" />
+                まだ画像はありません。記録画面から追加するとここに表示されます。
+              </div>
+            </article>
+          )}
+        </SectionCard>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <SectionCard
           title="ピン留めメモ"
           description="後で見返したいメモをここに集めておけます。"
         >
@@ -255,4 +298,3 @@ export default function HomePage() {
     </div>
   );
 }
-

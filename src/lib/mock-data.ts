@@ -48,7 +48,8 @@ export const todayEntry: DailyEntry = {
       tags: ["売場", "春施策"],
       pinned: true
     }
-  ]
+  ],
+  attachments: []
 };
 
 export const upcomingSchedules: ScheduleItem[] = [

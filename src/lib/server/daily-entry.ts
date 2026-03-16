@@ -1,5 +1,6 @@
 import type {
   DailyEntry,
+  EntryAttachment,
   MemoItem,
   SalesCategory,
   SalesSnapshot,
@@ -12,6 +13,17 @@ type EntryCategoryRecord = {
   id: string;
   categoryName: string;
   amount: unknown;
+};
+
+type EntryAttachmentRecord = {
+  id: string;
+  fileName: string;
+  fileUrl: string;
+  fileType: string;
+  fileSize: number;
+  keepForever: boolean;
+  expiresAt: Date | null;
+  createdAt: Date;
 };
 
 type EntryRecord = {
@@ -31,6 +43,7 @@ type EntryRecord = {
         categories: EntryCategoryRecord[];
       }
     | null;
+  attachments?: EntryAttachmentRecord[];
 };
 
 type PersistedWeather = Exclude<EntryRecord["weather"], null>;
@@ -68,7 +81,8 @@ const reverseWindMap: Record<PersistedWindStrength, WindStrength> = {
   VERY_STRONG: "veryStrong"
 };
 
-const scheduleCategories = ["\u696d\u52d9", "\u4ed5\u5165\u308c", "\u4f1a\u8b70", "\u30d7\u30e9\u30a4\u30d9\u30fc\u30c8", "\u305d\u306e\u4ed6"] as const;
+const scheduleCategories = ["業務", "仕入れ", "会議", "プライベート", "その他"] as const;
+const maxAttachmentDataUrlLength = 4_000_000;
 
 const numberValue = (value: unknown) => {
   const parsed = Number(value);
@@ -88,7 +102,7 @@ const normalizeMemo = (memo: MemoItem): MemoItem => ({
 const normalizeSchedule = (schedule: ScheduleItem): ScheduleItem => ({
   ...schedule,
   title: schedule.title.trim(),
-  category: isScheduleCategory(schedule.category) ? schedule.category : "\u696d\u52d9",
+  category: isScheduleCategory(schedule.category) ? schedule.category : "業務",
   reminderMinutes: Array.from(
     new Set(
       (schedule.reminderMinutes ?? [])
@@ -97,6 +111,25 @@ const normalizeSchedule = (schedule: ScheduleItem): ScheduleItem => ({
     )
   ).sort((left, right) => left - right)
 });
+
+const normalizeAttachment = (attachment: EntryAttachment): EntryAttachment => ({
+  ...attachment,
+  name: attachment.name.trim() || "画像",
+  url: attachment.url.trim(),
+  mimeType: attachment.mimeType.trim() || "image/jpeg",
+  size: Math.max(0, Math.floor(numberValue(attachment.size))),
+  createdAt: new Date(attachment.createdAt).toISOString(),
+  expiresAt: attachment.keepForever || !attachment.expiresAt ? null : new Date(attachment.expiresAt).toISOString(),
+  keepForever: Boolean(attachment.keepForever)
+});
+
+const isAttachmentExpired = (attachment: EntryAttachment, now: Date) => {
+  if (attachment.keepForever || !attachment.expiresAt) {
+    return false;
+  }
+
+  return new Date(attachment.expiresAt).getTime() <= now.getTime();
+};
 
 export const normalizeSalesSnapshot = (sales: SalesSnapshot): SalesSnapshot => {
   const total = Math.max(0, Math.floor(numberValue(sales.total)));
@@ -128,8 +161,26 @@ export const normalizeDailyEntry = (entry: DailyEntry): DailyEntry => ({
     .map(normalizeSchedule)
     .filter((schedule) => schedule.title || schedule.start)
     .sort((left, right) => left.start.localeCompare(right.start)),
-  memos: entry.memos.map(normalizeMemo).filter((memo) => memo.title || memo.content)
+  memos: entry.memos.map(normalizeMemo).filter((memo) => memo.title || memo.content),
+  attachments: (entry.attachments ?? [])
+    .map(normalizeAttachment)
+    .filter((attachment) => attachment.url.startsWith("data:image/"))
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
 });
+
+export const pruneExpiredAttachments = (entry: DailyEntry, now = new Date()): DailyEntry => {
+  const normalized = normalizeDailyEntry(entry);
+  const attachments = normalized.attachments.filter((attachment) => !isAttachmentExpired(attachment, now));
+
+  if (attachments.length === normalized.attachments.length) {
+    return normalized;
+  }
+
+  return {
+    ...normalized,
+    attachments
+  };
+};
 
 export const mapEntryRecordToDomain = (record: EntryRecord, schedules: ScheduleItem[] = []): DailyEntry => {
   const salesCategories: SalesCategory[] =
@@ -137,6 +188,18 @@ export const mapEntryRecordToDomain = (record: EntryRecord, schedules: ScheduleI
       id: category.id,
       name: category.categoryName,
       amount: numberValue(category.amount)
+    })) ?? [];
+
+  const attachments: EntryAttachment[] =
+    record.attachments?.map((attachment) => ({
+      id: attachment.id,
+      name: attachment.fileName,
+      url: attachment.fileUrl,
+      mimeType: attachment.fileType,
+      size: attachment.fileSize,
+      createdAt: attachment.createdAt.toISOString(),
+      expiresAt: attachment.keepForever ? null : attachment.expiresAt?.toISOString() ?? null,
+      keepForever: attachment.keepForever
     })) ?? [];
 
   const sales = normalizeSalesSnapshot({
@@ -158,7 +221,8 @@ export const mapEntryRecordToDomain = (record: EntryRecord, schedules: ScheduleI
     tags: record.tags,
     sales,
     schedules,
-    memos: []
+    memos: [],
+    attachments
   };
 };
 
@@ -183,11 +247,20 @@ export const mapDailyEntryToPrisma = (entry: DailyEntry) => {
       }))
     },
     schedules: normalized.schedules.map((schedule) => ({
-      title: schedule.title || "\u4e88\u5b9a",
+      title: schedule.title || "予定",
       startDatetime: new Date(schedule.start),
       endDatetime: schedule.end ? new Date(schedule.end) : null,
       category: schedule.category,
       reminderMinutes: schedule.reminderMinutes
+    })),
+    attachments: normalized.attachments.map((attachment) => ({
+      fileName: attachment.name,
+      fileUrl: attachment.url,
+      fileType: attachment.mimeType,
+      fileSize: attachment.size,
+      keepForever: attachment.keepForever,
+      expiresAt: attachment.keepForever || !attachment.expiresAt ? null : new Date(attachment.expiresAt),
+      createdAt: new Date(attachment.createdAt)
     }))
   };
 };
@@ -222,6 +295,7 @@ export const parseDailyEntryInput = (payload: unknown): DailyEntry | null => {
   const categories = Array.isArray(sales.categories) ? sales.categories : [];
   const schedules = Array.isArray(entry.schedules) ? entry.schedules : [];
   const memos = Array.isArray(entry.memos) ? entry.memos : [];
+  const attachments = Array.isArray(entry.attachments) ? entry.attachments : [];
   const weather = entry.weather as Weather;
   const wind = entry.wind as WindStrength;
 
@@ -291,6 +365,32 @@ export const parseDailyEntryInput = (payload: unknown): DailyEntry | null => {
         content: memo.content,
         tags: memo.tags.filter((tag): tag is string => typeof tag === "string"),
         pinned: memo.pinned
+      })),
+    attachments: attachments
+      .filter(
+        (attachment): attachment is EntryAttachment =>
+          Boolean(attachment) &&
+          typeof attachment === "object" &&
+          typeof attachment.id === "string" &&
+          typeof attachment.name === "string" &&
+          typeof attachment.url === "string" &&
+          typeof attachment.mimeType === "string" &&
+          attachment.url.startsWith("data:image/") &&
+          attachment.url.length <= maxAttachmentDataUrlLength &&
+          typeof attachment.size !== "undefined" &&
+          typeof attachment.createdAt === "string" &&
+          (attachment.expiresAt === null || typeof attachment.expiresAt === "string") &&
+          typeof attachment.keepForever === "boolean"
+      )
+      .map((attachment) => ({
+        id: attachment.id,
+        name: attachment.name,
+        url: attachment.url,
+        mimeType: attachment.mimeType,
+        size: numberValue(attachment.size),
+        createdAt: attachment.createdAt,
+        expiresAt: attachment.expiresAt,
+        keepForever: attachment.keepForever
       }))
   });
 };

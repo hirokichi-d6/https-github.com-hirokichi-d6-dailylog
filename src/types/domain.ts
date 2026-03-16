@@ -33,6 +33,17 @@ export type MemoItem = {
   pinned: boolean;
 };
 
+export type EntryAttachment = {
+  id: string;
+  name: string;
+  url: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+  expiresAt: string | null;
+  keepForever: boolean;
+};
+
 export type DailyEntry = {
   id: string;
   date: string;
@@ -44,6 +55,7 @@ export type DailyEntry = {
   sales: SalesSnapshot;
   schedules: ScheduleItem[];
   memos: MemoItem[];
+  attachments: EntryAttachment[];
 };
 
 export type SalesTrendPoint = {

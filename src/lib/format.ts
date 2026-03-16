@@ -13,3 +13,15 @@ export const formatShortDate = (value: string) =>
     day: "numeric",
     weekday: "short"
   }).format(new Date(value));
+
+export const formatFileSize = (value: number) => {
+  if (value < 1024) {
+    return `${value} B`;
+  }
+
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+};

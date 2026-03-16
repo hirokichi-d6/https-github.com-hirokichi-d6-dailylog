@@ -8,11 +8,18 @@ import {
   todayEntry,
   upcomingSchedules as defaultUpcomingSchedules
 } from "@/lib/mock-data";
-import type { DailyEntry, MemoItem, SalesSnapshot, SalesTrendPoint, ScheduleItem } from "@/types/domain";
+import type {
+  DailyEntry,
+  EntryAttachment,
+  MemoItem,
+  SalesSnapshot,
+  SalesTrendPoint,
+  ScheduleItem
+} from "@/types/domain";
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
-const scheduleCategories = ["\u696d\u52d9", "\u4ed5\u5165\u308c", "\u4f1a\u8b70", "\u30d7\u30e9\u30a4\u30d9\u30fc\u30c8", "\u305d\u306e\u4ed6"] as const;
+const scheduleCategories = ["業務", "仕入れ", "会議", "プライベート", "その他"] as const;
 
 const isScheduleCategory = (value: string): value is ScheduleItem["category"] =>
   scheduleCategories.includes(value as ScheduleItem["category"]);
@@ -60,10 +67,21 @@ const normalizeSchedule = (schedule: ScheduleItem): ScheduleItem => {
     title: schedule.title.trim(),
     start: schedule.start,
     end: schedule.end,
-    category: isScheduleCategory(schedule.category) ? schedule.category : "\u696d\u52d9",
+    category: isScheduleCategory(schedule.category) ? schedule.category : "業務",
     reminderMinutes
   };
 };
+
+const normalizeAttachment = (attachment: EntryAttachment): EntryAttachment => ({
+  ...attachment,
+  name: attachment.name.trim() || "画像",
+  url: attachment.url.trim(),
+  mimeType: attachment.mimeType.trim() || "image/jpeg",
+  size: Math.max(0, Math.floor(Number(attachment.size) || 0)),
+  createdAt: new Date(attachment.createdAt).toISOString(),
+  expiresAt: attachment.keepForever || !attachment.expiresAt ? null : new Date(attachment.expiresAt).toISOString(),
+  keepForever: Boolean(attachment.keepForever)
+});
 
 const normalizeEntry = (entry: DailyEntry): DailyEntry => ({
   ...entry,
@@ -74,12 +92,31 @@ const normalizeEntry = (entry: DailyEntry): DailyEntry => ({
     .map(normalizeSchedule)
     .filter((schedule) => schedule.title || schedule.start)
     .sort((left, right) => left.start.localeCompare(right.start)),
-  memos: (entry.memos ?? []).map(normalizeMemo).filter((memo) => memo.title || memo.content)
+  memos: (entry.memos ?? []).map(normalizeMemo).filter((memo) => memo.title || memo.content),
+  attachments: (entry.attachments ?? [])
+    .map(normalizeAttachment)
+    .filter((attachment) => attachment.url.startsWith("data:image/"))
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
 });
 
 const createInitialEntry = () => normalizeEntry(clone(todayEntry));
 const createInitialTrend = () => clone(defaultSalesTrend);
 const createPinnedMemos = () => clone(defaultPinnedMemos);
+
+const mergePersistedEntry = (entry: Partial<DailyEntry> | undefined, fallback: DailyEntry): DailyEntry =>
+  normalizeEntry({
+    ...fallback,
+    ...entry,
+    tags: entry?.tags ?? fallback.tags,
+    sales: {
+      ...fallback.sales,
+      ...(entry?.sales ?? {}),
+      categories: entry?.sales?.categories ?? fallback.sales.categories
+    },
+    schedules: entry?.schedules ?? fallback.schedules,
+    memos: entry?.memos ?? fallback.memos,
+    attachments: entry?.attachments ?? fallback.attachments
+  });
 
 const syncTrendWithEntry = (trend: SalesTrendPoint[], entry: DailyEntry) =>
   trend.map((point, index) =>
@@ -114,7 +151,7 @@ const createEmptyMemo = (): MemoItem => ({
 
 const createSalesCategory = () => ({
   id: `category-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-  name: "\u65b0\u898f\u30ab\u30c6\u30b4\u30ea",
+  name: "新規カテゴリ",
   amount: 0
 });
 
@@ -123,7 +160,7 @@ const createSchedule = (date: string): ScheduleItem => ({
   title: "",
   start: `${date.slice(0, 10)}T10:00:00+09:00`,
   end: `${date.slice(0, 10)}T11:00:00+09:00`,
-  category: "\u696d\u52d9",
+  category: "業務",
   reminderMinutes: [15]
 });
 
@@ -170,6 +207,9 @@ type DailyLogState = {
   updateMemo: (memoId: string, patch: Partial<Pick<MemoItem, "title" | "content" | "tags" | "pinned">>) => void;
   removeMemo: (memoId: string) => void;
   toggleMemoPinned: (memoId: string) => void;
+  addAttachments: (attachments: EntryAttachment[]) => void;
+  removeAttachment: (attachmentId: string) => void;
+  toggleAttachmentKeepForever: (attachmentId: string) => void;
   loadEntry: (date?: string) => Promise<void>;
   saveDraft: () => Promise<void>;
   resetDemoData: () => void;
@@ -178,22 +218,22 @@ type DailyLogState = {
 const getLoadMessage = (source: Exclude<SyncSource, "local">) => {
   switch (source) {
     case "database":
-      return "\u30c7\u30fc\u30bf\u30d9\u30fc\u30b9\u304b\u3089\u8aad\u307f\u8fbc\u307f\u307e\u3057\u305f\u3002";
+      return "データベースから読み込みました。";
     case "file":
-      return "\u4fdd\u5b58\u30d5\u30a1\u30a4\u30eb\u304b\u3089\u8aad\u307f\u8fbc\u307f\u307e\u3057\u305f\u3002";
+      return "保存ファイルから読み込みました。";
     default:
-      return "\u30e2\u30c3\u30af\u30c7\u30fc\u30bf\u3092\u8868\u793a\u3057\u3066\u3044\u307e\u3059\u3002";
+      return "モックデータを表示しています。";
   }
 };
 
 const getSaveMessage = (source: Exclude<SyncSource, "local">) => {
   switch (source) {
     case "database":
-      return "\u30c7\u30fc\u30bf\u30d9\u30fc\u30b9\u306b\u4fdd\u5b58\u3057\u307e\u3057\u305f\u3002";
+      return "データベースに保存しました。";
     case "file":
-      return "\u30b5\u30fc\u30d0\u30fc\u306e\u4fdd\u5b58\u30d5\u30a1\u30a4\u30eb\u306b\u4fdd\u5b58\u3057\u307e\u3057\u305f\u3002";
+      return "サーバーの保存ファイルに保存しました。";
     default:
-      return "\u30e2\u30c3\u30af\u4fdd\u5b58\u3068\u3057\u3066\u53cd\u6620\u3057\u307e\u3057\u305f\u3002";
+      return "モック保存として反映しました。";
   }
 };
 
@@ -386,12 +426,44 @@ export const useDailyLogStore = create<DailyLogState>()(
             syncMessage: null
           };
         }),
+      addAttachments: (attachments) =>
+        set((state) => ({
+          draftEntry: normalizeEntry({
+            ...state.draftEntry,
+            attachments: [...state.draftEntry.attachments, ...attachments]
+          }),
+          syncMessage: null
+        })),
+      removeAttachment: (attachmentId) =>
+        set((state) => ({
+          draftEntry: normalizeEntry({
+            ...state.draftEntry,
+            attachments: state.draftEntry.attachments.filter((attachment) => attachment.id !== attachmentId)
+          }),
+          syncMessage: null
+        })),
+      toggleAttachmentKeepForever: (attachmentId) =>
+        set((state) => ({
+          draftEntry: normalizeEntry({
+            ...state.draftEntry,
+            attachments: state.draftEntry.attachments.map((attachment) =>
+              attachment.id === attachmentId
+                ? {
+                    ...attachment,
+                    keepForever: !attachment.keepForever,
+                    expiresAt: attachment.keepForever ? new Date(new Date(attachment.createdAt).setMonth(new Date(attachment.createdAt).getMonth() + 13)).toISOString() : null
+                  }
+                : attachment
+            )
+          }),
+          syncMessage: null
+        })),
       loadEntry: async (date) => {
         const targetDate = date ?? get().draftEntry.date;
 
         set({
           syncState: "loading",
-          syncMessage: "\u8a18\u9332\u3092\u8aad\u307f\u8fbc\u3093\u3067\u3044\u307e\u3059\u3002"
+          syncMessage: "記録を読み込んでいます。"
         });
 
         try {
@@ -421,7 +493,7 @@ export const useDailyLogStore = create<DailyLogState>()(
           console.error("loadEntry failed", error);
           set({
             syncState: "error",
-            syncMessage: "\u8a18\u9332\u306e\u8aad\u307f\u8fbc\u307f\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002",
+            syncMessage: "記録の読み込みに失敗しました。",
             hasBootstrapped: true
           });
         }
@@ -432,7 +504,7 @@ export const useDailyLogStore = create<DailyLogState>()(
         set({
           draftEntry: payload,
           syncState: "saving",
-          syncMessage: "\u4fdd\u5b58\u3057\u3066\u3044\u307e\u3059\u3002"
+          syncMessage: "保存しています。"
         });
 
         try {
@@ -468,7 +540,7 @@ export const useDailyLogStore = create<DailyLogState>()(
           console.error("saveDraft failed", error);
           set({
             syncState: "error",
-            syncMessage: "\u4fdd\u5b58\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002"
+            syncMessage: "保存に失敗しました。"
           });
         }
       },
@@ -484,7 +556,7 @@ export const useDailyLogStore = create<DailyLogState>()(
           lastSavedAt: null,
           syncState: "idle",
           syncSource: "local",
-          syncMessage: "\u30c7\u30e2\u30c7\u30fc\u30bf\u306b\u623b\u3057\u307e\u3057\u305f\u3002",
+          syncMessage: "デモデータに戻しました。",
           hasBootstrapped: true
         });
       }
@@ -503,7 +575,20 @@ export const useDailyLogStore = create<DailyLogState>()(
         syncSource: state.syncSource,
         syncMessage: state.syncMessage,
         hasBootstrapped: state.hasBootstrapped
-      })
+      }),
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState as Partial<DailyLogState>) ?? {};
+
+        return {
+          ...currentState,
+          ...persisted,
+          draftEntry: mergePersistedEntry(persisted.draftEntry, currentState.draftEntry),
+          savedEntry: mergePersistedEntry(persisted.savedEntry, currentState.savedEntry),
+          pinnedMemos: persisted.pinnedMemos ?? currentState.pinnedMemos,
+          upcomingSchedules: persisted.upcomingSchedules ?? currentState.upcomingSchedules,
+          salesTrend: persisted.salesTrend ?? currentState.salesTrend
+        };
+      }
     }
   )
 );

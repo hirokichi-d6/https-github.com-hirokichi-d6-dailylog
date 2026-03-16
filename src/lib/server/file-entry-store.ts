@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pruneExpiredAttachments } from "@/lib/server/daily-entry";
 import type { DailyEntry, Weather } from "@/types/domain";
 
 const resolveDataDirectory = () => {
@@ -60,21 +61,51 @@ const writeEntries = async (entries: EntryCollection) => {
   await writeFile(entriesFilePath, payload, "utf8");
 };
 
+const pruneEntryCollection = (entries: EntryCollection) => {
+  let hasChanges = false;
+
+  const nextEntries = Object.fromEntries(
+    Object.entries(entries).map(([key, entry]) => {
+      const prunedEntry = pruneExpiredAttachments(entry);
+
+      if (prunedEntry.attachments.length !== (entry.attachments ?? []).length) {
+        hasChanges = true;
+      }
+
+      return [key, prunedEntry];
+    })
+  );
+
+  return { entries: nextEntries, hasChanges };
+};
+
 export const getStoredEntry = async (date: string) => {
-  const entries = await readEntries();
+  const storedEntries = await readEntries();
+  const { entries, hasChanges } = pruneEntryCollection(storedEntries);
+
+  if (hasChanges) {
+    await writeEntries(entries);
+  }
+
   return entries[keyFromDate(date)] ?? null;
 };
 
 export const saveStoredEntry = async (entry: DailyEntry) => {
-  const entries = await readEntries();
+  const storedEntries = await readEntries();
+  const { entries } = pruneEntryCollection(storedEntries);
   const normalizedKey = keyFromDate(entry.date);
-  entries[normalizedKey] = entry;
+  entries[normalizedKey] = pruneExpiredAttachments(entry);
   await writeEntries(entries);
   return entries[normalizedKey];
 };
 
 export const listStoredEntries = async (month?: string): Promise<DailyEntry[]> => {
-  const entries = await readEntries();
+  const storedEntries = await readEntries();
+  const { entries, hasChanges } = pruneEntryCollection(storedEntries);
+
+  if (hasChanges) {
+    await writeEntries(entries);
+  }
 
   return Object.entries(entries)
     .filter(([key]) => !month || key.startsWith(month))

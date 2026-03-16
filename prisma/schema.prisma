@@ -106,13 +106,16 @@ model Memo {
 }
 
 model Attachment {
-  id        String      @id @default(cuid())
-  entryId   String?
-  memoId    String?
-  fileUrl   String
-  fileType  String
-  fileSize  Int
-  createdAt DateTime    @default(now())
-  entry     DailyEntry? @relation(fields: [entryId], references: [id], onDelete: SetNull)
-  memo      Memo?       @relation(fields: [memoId], references: [id], onDelete: SetNull)
+  id          String      @id @default(cuid())
+  entryId      String?
+  memoId       String?
+  fileName     String
+  fileUrl      String
+  fileType     String
+  fileSize     Int
+  keepForever  Boolean     @default(false)
+  expiresAt    DateTime?
+  createdAt    DateTime    @default(now())
+  entry        DailyEntry? @relation(fields: [entryId], references: [id], onDelete: SetNull)
+  memo         Memo?       @relation(fields: [memoId], references: [id], onDelete: SetNull)
 }

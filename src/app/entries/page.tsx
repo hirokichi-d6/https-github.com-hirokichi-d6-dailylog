@@ -1,28 +1,43 @@
 "use client";
 
-import { startTransition } from "react";
-import { ChevronLeft, ChevronRight, Download, Mic, Plus, RotateCcw, Save, Trash2 } from "lucide-react";
+import Image from "next/image";
+import { startTransition, useRef, useState } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  ImagePlus,
+  Mic,
+  Plus,
+  RotateCcw,
+  Save,
+  ShieldCheck,
+  Trash2
+} from "lucide-react";
 import { SectionCard } from "@/components/section-card";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatFileSize, formatShortDate } from "@/lib/format";
 import { useDailyLogStore } from "@/lib/store";
+import type { EntryAttachment } from "@/types/domain";
 
 const inputClassName =
   "mt-1.5 w-full rounded-xl border border-[#e7decd] bg-cloud px-3.5 py-2.5 text-sm outline-none transition focus:border-moss focus:ring-2 focus:ring-moss/15";
+const attachmentRetentionMonths = 13;
+const maxAttachmentCount = 6;
 
 const weatherLabelMap = {
-  sunny: "\u6674\u308c",
-  cloudy: "\u66c7\u308a",
-  rainy: "\u96e8",
-  snowy: "\u96ea",
-  other: "\u305d\u306e\u4ed6"
+  sunny: "晴れ",
+  cloudy: "曇り",
+  rainy: "雨",
+  snowy: "雪",
+  other: "その他"
 } as const;
 
 const windLabelMap = {
-  calm: "\u7121\u98a8",
-  light: "\u5fae\u98a8",
-  moderate: "\u3084\u3084\u5f37\u3044",
-  strong: "\u5f37\u3044",
-  veryStrong: "\u975e\u5e38\u306b\u5f37\u3044"
+  calm: "無風",
+  light: "微風",
+  moderate: "やや強い",
+  strong: "強い",
+  veryStrong: "非常に強い"
 } as const;
 
 const shiftDate = (value: string, offset: number) => {
@@ -32,6 +47,70 @@ const shiftDate = (value: string, offset: number) => {
   const month = `${base.getMonth() + 1}`.padStart(2, "0");
   const day = `${base.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}T09:00:00+09:00`;
+};
+
+const addMonths = (value: Date, months: number) => {
+  const next = new Date(value);
+  next.setMonth(next.getMonth() + months);
+  return next;
+};
+
+const readFileAsDataUrl = (file: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("画像の読み込みに失敗しました。"));
+    reader.readAsDataURL(file);
+  });
+
+const loadImageElement = (src: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("画像の展開に失敗しました。"));
+    image.src = src;
+  });
+
+const convertFileToAttachment = async (file: File): Promise<EntryAttachment> => {
+  const sourceUrl = await readFileAsDataUrl(file);
+  const image = await loadImageElement(sourceUrl);
+  const maxDimension = 1600;
+  const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("画像の変換に失敗しました。");
+  }
+
+  context.drawImage(image, 0, 0, width, height);
+
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, "image/jpeg", 0.82);
+  });
+
+  if (!blob) {
+    throw new Error("画像の圧縮に失敗しました。");
+  }
+
+  const dataUrl = await readFileAsDataUrl(blob);
+  const createdAt = new Date();
+
+  return {
+    id: `attachment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: file.name,
+    url: dataUrl,
+    mimeType: blob.type || "image/jpeg",
+    size: blob.size,
+    createdAt: createdAt.toISOString(),
+    expiresAt: addMonths(createdAt, attachmentRetentionMonths).toISOString(),
+    keepForever: false
+  };
 };
 
 export default function EntriesPage() {
@@ -47,9 +126,15 @@ export default function EntriesPage() {
   const updateCategoryName = useDailyLogStore((state) => state.updateCategoryName);
   const updateCategoryAmount = useDailyLogStore((state) => state.updateCategoryAmount);
   const removeSalesCategory = useDailyLogStore((state) => state.removeSalesCategory);
+  const addAttachments = useDailyLogStore((state) => state.addAttachments);
+  const removeAttachment = useDailyLogStore((state) => state.removeAttachment);
+  const toggleAttachmentKeepForever = useDailyLogStore((state) => state.toggleAttachmentKeepForever);
   const loadEntry = useDailyLogStore((state) => state.loadEntry);
   const saveDraft = useDailyLogStore((state) => state.saveDraft);
   const resetDemoData = useDailyLogStore((state) => state.resetDemoData);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const onLoad = () => {
     startTransition(() => {
@@ -77,7 +162,42 @@ export default function EntriesPage() {
     });
   };
 
-  const isBusy = syncState === "loading" || syncState === "saving";
+  const onSelectFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    if (draftEntry.attachments.length >= maxAttachmentCount) {
+      setUploadMessage(`画像は最大 ${maxAttachmentCount} 枚までです。`);
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadMessage(null);
+
+    try {
+      const pickedFiles = Array.from(files)
+        .filter((file) => file.type.startsWith("image/"))
+        .slice(0, Math.max(0, maxAttachmentCount - draftEntry.attachments.length));
+
+      if (pickedFiles.length === 0) {
+        throw new Error("画像ファイルを選んでください。");
+      }
+
+      const attachments = await Promise.all(pickedFiles.map(convertFileToAttachment));
+      addAttachments(attachments);
+      setUploadMessage(`${attachments.length} 枚の画像を追加しました。保存するとこの日の記録に紐づきます。`);
+    } catch (error) {
+      setUploadMessage(error instanceof Error ? error.message : "画像の追加に失敗しました。");
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const isBusy = syncState === "loading" || syncState === "saving" || isUploading;
   const statusTone =
     syncState === "error"
       ? "text-[#ffe5d6]"
@@ -88,13 +208,13 @@ export default function EntriesPage() {
   return (
     <div className="space-y-4 py-1 sm:space-y-5">
       <SectionCard
-        title={"\u65e5\u6b21\u30a8\u30f3\u30c8\u30ea\u30fc"}
-        description={"\u65e5\u5831\u3068\u58f2\u4e0a\u3092\u307e\u3068\u3081\u3066\u7de8\u96c6\u3057\u3066\u3001API \u7d4c\u7531\u3067\u4fdd\u5b58\u3067\u304d\u307e\u3059\u3002"}
+        title="日次エントリー"
+        description="日報、売上、画像をまとめて編集して、その日の記録として保存できます。"
         actions={
           <div className="flex flex-wrap gap-2">
             <button className="inline-flex items-center gap-2 rounded-full bg-oat px-3.5 py-2 text-sm font-semibold text-ink">
               <Mic className="h-4 w-4" />
-              {"\u97f3\u58f0\u5165\u529b"}
+              音声入力
             </button>
             <button
               onClick={onLoad}
@@ -102,7 +222,7 @@ export default function EntriesPage() {
               className="inline-flex items-center gap-2 rounded-full border border-oat bg-white px-3.5 py-2 text-sm font-semibold text-ink disabled:opacity-60"
             >
               <Download className="h-4 w-4" />
-              {"\u8aad\u8fbc"}
+              読込
             </button>
             <button
               onClick={onReset}
@@ -110,7 +230,7 @@ export default function EntriesPage() {
               className="inline-flex items-center gap-2 rounded-full border border-oat bg-white px-3.5 py-2 text-sm font-semibold text-ink disabled:opacity-60"
             >
               <RotateCcw className="h-4 w-4" />
-              {"\u30b5\u30f3\u30d7\u30eb\u306b\u623b\u3059"}
+              サンプルに戻す
             </button>
             <button
               onClick={onSave}
@@ -118,7 +238,7 @@ export default function EntriesPage() {
               className="inline-flex items-center gap-2 rounded-full bg-moss px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-60"
             >
               <Save className="h-4 w-4" />
-              {syncState === "saving" ? "\u4fdd\u5b58\u4e2d" : "\u4fdd\u5b58"}
+              {syncState === "saving" ? "保存中" : "保存"}
             </button>
           </div>
         }
@@ -134,7 +254,7 @@ export default function EntriesPage() {
                   className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-ink disabled:opacity-60"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
-                  {"\u524d\u65e5"}
+                  前日
                 </button>
                 <button
                   type="button"
@@ -142,16 +262,16 @@ export default function EntriesPage() {
                   disabled={isBusy}
                   className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-ink disabled:opacity-60"
                 >
-                  {"\u7fcc\u65e5"}
+                  翌日
                   <ChevronRight className="h-3.5 w-3.5" />
                 </button>
-                <p className="text-sm text-ink/65">{`\u9078\u629e\u4e2d: ${draftEntry.date.slice(0, 10)}`}</p>
+                <p className="text-sm text-ink/65">{`選択中: ${draftEntry.date.slice(0, 10)}`}</p>
               </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block text-sm font-medium text-ink/75">
-                {"\u65e5\u4ed8"}
+                日付
                 <input
                   className={inputClassName}
                   value={draftEntry.date.slice(0, 10)}
@@ -160,7 +280,7 @@ export default function EntriesPage() {
                 />
               </label>
               <label className="block text-sm font-medium text-ink/75">
-                {"\u5929\u6c17"}
+                天気
                 <select
                   className={inputClassName}
                   value={draftEntry.weather}
@@ -174,7 +294,7 @@ export default function EntriesPage() {
                 </select>
               </label>
               <label className="block text-sm font-medium text-ink/75">
-                {"\u6c17\u6e29"}
+                気温
                 <input
                   className={inputClassName}
                   value={draftEntry.temperature}
@@ -183,7 +303,7 @@ export default function EntriesPage() {
                 />
               </label>
               <label className="block text-sm font-medium text-ink/75">
-                {"\u98a8\u306e\u5f37\u3055"}
+                風の強さ
                 <select
                   className={inputClassName}
                   value={draftEntry.wind}
@@ -199,7 +319,7 @@ export default function EntriesPage() {
             </div>
 
             <label className="block text-sm font-medium text-ink/75">
-              {"\u65e5\u8a18\u30fb\u30e1\u30e2"}
+              日記・メモ
               <textarea
                 className={`${inputClassName} min-h-44 resize-none`}
                 value={draftEntry.diary}
@@ -208,22 +328,110 @@ export default function EntriesPage() {
             </label>
 
             <label className="block text-sm font-medium text-ink/75">
-              {"\u30bf\u30b0"}
+              タグ
               <input
                 className={inputClassName}
                 value={draftEntry.tags.join(", ")}
                 onChange={(event) => updateTagString(event.target.value)}
-                placeholder={"\u4f8b: \u65b0\u5546\u54c1, \u4ed5\u5165\u308c, \u30a4\u30d9\u30f3\u30c8"}
+                placeholder="例: 新商品, 仕入れ, イベント"
               />
             </label>
+
+            <div className="rounded-[1.35rem] bg-white p-4 ring-1 ring-oat">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-ink">画像添付</p>
+                  <p className="mt-1 text-sm leading-6 text-ink/65">
+                    売場写真や店頭の様子をこの日に紐づけて保存します。通常は 13 か月保存、`残す` を付けると期限なしになります。
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => {
+                      void onSelectFiles(event.target.files);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isBusy || draftEntry.attachments.length >= maxAttachmentCount}
+                    className="inline-flex items-center gap-2 rounded-full bg-oat px-3 py-2 text-xs font-semibold text-ink disabled:opacity-60"
+                  >
+                    <ImagePlus className="h-3.5 w-3.5" />
+                    画像を追加
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-[1.2rem] bg-cloud px-4 py-3 text-sm text-ink/70">
+                <p>上限: {maxAttachmentCount} 枚 / 画像は自動で圧縮して保存します。</p>
+                <p className="mt-1">保存後は他の PC から同じアカウントで見返せます。</p>
+                {uploadMessage ? <p className="mt-2 font-medium text-moss">{uploadMessage}</p> : null}
+              </div>
+
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {draftEntry.attachments.length > 0 ? (
+                  draftEntry.attachments.map((attachment) => (
+                    <article key={attachment.id} className="overflow-hidden rounded-[1.2rem] border border-oat bg-cloud">
+                      <Image
+                        src={attachment.url}
+                        alt={attachment.name}
+                        width={1200}
+                        height={900}
+                        unoptimized
+                        className="aspect-[4/3] w-full object-cover"
+                      />
+                      <div className="space-y-2 p-3">
+                        <div>
+                          <p className="truncate text-sm font-semibold text-ink">{attachment.name}</p>
+                          <p className="mt-1 text-xs text-ink/60">{formatFileSize(attachment.size)}</p>
+                        </div>
+                        <p className="text-xs leading-5 text-ink/65">
+                          {attachment.keepForever
+                            ? "保持: 期限なし"
+                            : `削除予定: ${attachment.expiresAt ? formatShortDate(attachment.expiresAt) : "未設定"}`}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleAttachmentKeepForever(attachment.id)}
+                            className="inline-flex items-center gap-1 rounded-full border border-[#d7cbb7] bg-white px-3 py-1.5 text-xs font-semibold text-ink"
+                          >
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            {attachment.keepForever ? "通常保存に戻す" : "残す"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeAttachment(attachment.id)}
+                            className="inline-flex items-center gap-1 rounded-full border border-[#f0d7cf] bg-white px-3 py-1.5 text-xs font-semibold text-[#b2512d]"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            削除
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <article className="rounded-[1.2rem] border border-dashed border-[#d7cbb7] bg-cloud px-4 py-6 text-sm text-ink/60 sm:col-span-2 xl:col-span-3">
+                    まだ画像はありません。売場、店頭、POP、棚の様子などを残すと振り返りしやすくなります。
+                  </article>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="space-y-4 min-w-0">
             <div className="rounded-[1.35rem] bg-oat p-4">
-              <p className="text-sm font-semibold text-ink">{"\u58f2\u4e0a\u5165\u529b"}</p>
+              <p className="text-sm font-semibold text-ink">売上入力</p>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm font-medium text-ink/75">
-                  {"\u5f53\u65e5\u58f2\u4e0a"}
+                  当日売上
                   <input
                     className={inputClassName}
                     value={draftEntry.sales.total}
@@ -232,7 +440,7 @@ export default function EntriesPage() {
                   />
                 </label>
                 <label className="block text-sm font-medium text-ink/75">
-                  {"\u76ee\u6a19\u58f2\u4e0a"}
+                  目標売上
                   <input
                     className={inputClassName}
                     value={draftEntry.sales.target}
@@ -241,7 +449,7 @@ export default function EntriesPage() {
                   />
                 </label>
                 <label className="block text-sm font-medium text-ink/75">
-                  {"\u5ba2\u6570"}
+                  客数
                   <input
                     className={inputClassName}
                     value={draftEntry.sales.customers}
@@ -250,12 +458,12 @@ export default function EntriesPage() {
                   />
                 </label>
                 <div className="rounded-xl bg-white px-3.5 py-3 text-sm text-ink/70">
-                  <p className="font-semibold text-ink">{"\u5ba2\u5358\u4fa1"}</p>
+                  <p className="font-semibold text-ink">客単価</p>
                   <p className="mt-1.5 text-lg font-semibold">{formatCurrency(draftEntry.sales.averageSpend)}</p>
                 </div>
               </div>
               <label className="mt-3 block text-sm font-medium text-ink/75">
-                {"\u58f2\u4e0a\u30e1\u30e2"}
+                売上メモ
                 <textarea
                   className={`${inputClassName} min-h-24 resize-none`}
                   value={draftEntry.sales.note}
@@ -266,14 +474,14 @@ export default function EntriesPage() {
 
             <div className="rounded-[1.35rem] bg-white p-4 ring-1 ring-oat">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-ink">{"\u30ab\u30c6\u30b4\u30ea\u5225\u58f2\u4e0a"}</p>
+                <p className="text-sm font-semibold text-ink">カテゴリ別売上</p>
                 <button
                   type="button"
                   onClick={addSalesCategory}
                   className="inline-flex items-center gap-2 rounded-full bg-oat px-3 py-1.5 text-xs font-semibold text-ink"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  {"\u30ab\u30c6\u30b4\u30ea\u8ffd\u52a0"}
+                  カテゴリ追加
                 </button>
               </div>
               <div className="mt-3 space-y-2.5">
@@ -281,7 +489,7 @@ export default function EntriesPage() {
                   <div key={category.id} className="rounded-xl bg-cloud p-3">
                     <div className="grid gap-3 sm:grid-cols-[1fr_140px_auto] sm:items-end">
                       <label className="block text-sm font-medium text-ink/75">
-                        {"\u30ab\u30c6\u30b4\u30ea\u540d"}
+                        カテゴリ名
                         <input
                           className={inputClassName}
                           value={category.name}
@@ -289,7 +497,7 @@ export default function EntriesPage() {
                         />
                       </label>
                       <label className="block text-sm font-medium text-ink/75">
-                        {"\u91d1\u984d"}
+                        金額
                         <input
                           className={inputClassName}
                           value={category.amount}
@@ -303,7 +511,7 @@ export default function EntriesPage() {
                         className="inline-flex items-center gap-2 rounded-full border border-[#f0d7cf] px-3 py-2 text-xs font-semibold text-[#b2512d]"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                        {"\u524a\u9664"}
+                        削除
                       </button>
                     </div>
                   </div>
@@ -312,14 +520,14 @@ export default function EntriesPage() {
             </div>
 
             <div className="rounded-[1.35rem] bg-moss p-4 text-cloud">
-              <p className="text-sm font-semibold">{"\u4fdd\u5b58\u72b6\u6cc1"}</p>
+              <p className="text-sm font-semibold">保存状況</p>
               <p className={`mt-2 text-sm leading-6 ${statusTone}`}>
                 {syncMessage ??
                   (lastSavedAt
-                    ? `\u6700\u7d42\u4fdd\u5b58 ${new Date(lastSavedAt).toLocaleString("ja-JP")}`
-                    : "\u307e\u3060\u4fdd\u5b58\u3057\u3066\u3044\u307e\u305b\u3093\u3002")}
+                    ? `最終保存 ${new Date(lastSavedAt).toLocaleString("ja-JP")}`
+                    : "まだ保存していません。")}
               </p>
-              <p className="mt-2 text-xs text-white/60">{`\u4fdd\u5b58\u5143: ${syncSource}`}</p>
+              <p className="mt-2 text-xs text-white/60">{`保存元: ${syncSource}`}</p>
             </div>
           </div>
         </div>
